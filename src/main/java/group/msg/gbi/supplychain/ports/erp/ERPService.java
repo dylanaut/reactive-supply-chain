@@ -8,7 +8,4 @@ import java.util.List;
 
 public interface ERPService {
     Uni<List<OrderItem>> checkStock(List<OrderItem> orderItems);
-
-
-    Multi<Object> checkStock(List<OrderItem> orderItems);
 }

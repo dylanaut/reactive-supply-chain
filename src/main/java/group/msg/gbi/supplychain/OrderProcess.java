@@ -1,174 +1,68 @@
 package group.msg.gbi.supplychain;
 
 import group.msg.gbi.supplychain.adapters.database.DatabaseService;
-import group.msg.gbi.supplychain.adapters.database.DatabaseServiceImp;
-import group.msg.gbi.supplychain.dtos.DeliveryNote;
+import group.msg.gbi.supplychain.entities.DeliveryNote;
 import group.msg.gbi.supplychain.entities.Invoice;
 import group.msg.gbi.supplychain.entities.Order;
-import group.msg.gbi.supplychain.entities.OrderItem;
-import group.msg.gbi.supplychain.entities.Payment;
-import group.msg.gbi.supplychain.entities.ReceiptConfirmation;
 import group.msg.gbi.supplychain.entities.Shipment;
-import group.msg.gbi.supplychain.ports.erp.ERPService;
-import group.msg.gbi.supplychain.ports.erp.ERPServiceImp;
 import group.msg.gbi.supplychain.ports.mail.EmailService;
-import group.msg.gbi.supplychain.ports.mail.EmailServiceImp;
-import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 
-import java.util.ArrayList;
-import java.util.List;
+import jakarta.enterprise.context.ApplicationScoped;
 
+@ApplicationScoped
 public class OrderProcess {
 
     private final DatabaseService databaseService;
-
-    private final ERPService erpService;
-
     private final EmailService emailService;
 
-
-    public OrderProcess(DatabaseService databaseService, ERPService erpService, EmailService emailService) {
+    public OrderProcess(DatabaseService databaseService, EmailService emailService) {
         this.databaseService = databaseService;
-        this.erpService = erpService;
         this.emailService = emailService;
     }
 
-
-    public Uni<Order> placeOrder(Order order) {
-        return Uni.createFrom().item(order);
+    public Uni<Void> processOrder(Order order) {
+        return placeOrder(order) // Schritt 1: Bestellung erstellen
+                .onItem().transformToUni(this::captureOrder) // Schritt 2: Auftrag erfassen
+                .onItem().transformToUni(this::createInvoice) // Schritt 3: Rechnung erstellen
+                .onItem().transformToUni(this::createDeliveryNote) // Schritt 4: Lieferschein erstellen
+                .onItem().transformToUni(this::prepareShipment) // Schritt 5: Versand vorbereiten
+                .onItem().transformToUni(this::sendShipmentNotification); // Schritt 6: Versandbenachrichtigung senden
     }
 
-
-    public Uni<Order> captureOrder(Order order) {
-        return Uni.createFrom().item(order)
-                .onItem().transformToUni(this::calculateDiscounts)
-                .onItem().transformToUni(databaseService::saveOrder); // Speichern in der Datenbank
+    private Uni<Order> placeOrder(Order order) {
+        return databaseService.saveOrder(order)
+                .onItem().invoke(savedOrder -> System.out.println("Bestellung gespeichert: " + savedOrder.getOrderId()));
     }
 
-
-    public Uni<Order> calculateDiscounts(Order order) {
-        double orderTotal = order.getTotalValue();
-        double itemDiscount = calculateItemDiscount(order.getOrderItems());
-        double orderDiscount = calculateOrderDiscount(orderTotal);
-        order.setItemDiscount(itemDiscount);
-        order.setOrderDiscount(orderDiscount);
-        order.setTotalValue(orderTotal - itemDiscount - orderDiscount);
-        return Uni.createFrom().item(order);
+    private Uni<Order> captureOrder(Order order) {
+        return databaseService.updateOrderState(order.getOrderId(), "CAPTURED")
+                .onItem().invoke(updatedOrder -> System.out.println("Auftrag erfasst: " + updatedOrder.getOrderId()));
     }
 
-
-    private double calculateItemDiscount(List<OrderItem> orderItems) {
-        double totalDiscount = 0;
-        for (OrderItem item : orderItems) {
-            double itemTotal = item.getPrice() * item.getQuantity();
-            double discountRate = 0;
-            if (itemTotal >= 100000) {
-                discountRate = 0.04;
-            } else if (itemTotal >= 10000) {
-                discountRate = 0.03;
-            } else if (itemTotal >= 1000) {
-                discountRate = 0.02;
-            }
-            totalDiscount += itemTotal * discountRate;
-        }
-        return totalDiscount;
+    private Uni<Invoice> createInvoice(Order order) {
+        Invoice invoice = new Invoice(order);
+        return databaseService.saveInvoice(invoice)
+                .onItem().invoke(savedInvoice -> System.out.println("Rechnung erstellt: " + savedInvoice.getInvoiceId()));
     }
 
-
-    private double calculateOrderDiscount(double orderTotal) {
-        double discountRate = 0;
-        if (orderTotal >= 100000) {
-            discountRate = 0.01;
-        } else if (orderTotal >= 10000) {
-            discountRate = 0.0075;
-        } else if (orderTotal >= 1000) {
-            discountRate = 0.005;
-        }
-        return orderTotal * discountRate;
+    private Uni<DeliveryNote> createDeliveryNote(Invoice invoice) {
+        DeliveryNote deliveryNote = new DeliveryNote(invoice);
+        return databaseService.saveDeliveryNote(deliveryNote)
+                .onItem().invoke(savedDeliveryNote -> System.out.println("Lieferschein erstellt: " + savedDeliveryNote.getDeliveryNoteId()));
     }
 
-
-    public Uni<Invoice> createInvoice(Order order) {
-        return Uni.createFrom().item(new Invoice(order));
+    private Uni<Shipment> prepareShipment(DeliveryNote deliveryNote) {
+        Shipment shipment = new Shipment(deliveryNote, deliveryNote.getInvoice().getOrder());
+        return databaseService.saveShipment(shipment)
+                .onItem().invoke(savedShipment -> System.out.println("Versand vorbereitet: " + savedShipment.getShipmentId()));
     }
 
-
-    public Uni<DeliveryNote> createDeliveryNote(Invoice invoice) {
-        return Uni.createFrom().item(new DeliveryNote(invoice));
-    }
-
-
-    public Uni<List<Shipment>> prepareShipment(DeliveryNote deliveryNote) {
-        // Integration mit dem ERP-System, um den Lagerbestand zu prüfen
-        return erpService.checkStock(deliveryNote.getOrderItems())
-                .onItem().transformToMulti(this::splitIntoPartialShipments) // Aufteilen in Teillieferungen, falls nötig
-                .collect().asList(); // Sammeln der Teillieferungen in einer Liste
-    }
-
-
-    private Multi<Shipment> splitIntoPartialShipments(List<OrderItem> availableItems) {
-        List<Shipment> shipments = new ArrayList<>();
-        // Logik zur Aufteilung in Teillieferungen basierend auf dem Lagerbestand
-        // Erstellt mehrere Shipment-Objekte
-        return Multi.createFrom().iterable(shipments);
-    }
-
-
-    public Uni<Void> sendShipmentNotification(Shipment shipment) {
-        // Senden einer E-Mail-Benachrichtigung mit dem Lieferschein
-        return emailService.sendEmail(shipment.getCustomerEmail(), "Shipment Notification", shipment.getDeliveryNote().toString());
-    }
-
-
-    public Uni<Shipment> dispatchShipment(Shipment shipment) {
-        // Asynchrone Operation für den Versand
-        return Uni.createFrom().item(shipment);
-    }
-
-
-    public Uni<ReceiptConfirmation> confirmReceipt(Shipment shipment) {
-        return Uni.createFrom().item(new ReceiptConfirmation(shipment));
-    }
-
-
-    public Uni<Payment> recordPayment(ReceiptConfirmation receiptConfirmation) {
-        return Uni.createFrom().item(receiptConfirmation)
-                .onItem().transformToUni(databaseService::savePayment); // Speichern der Zahlung in der Datenbank
-    }
-
-
-    public static void main(String[] args) {
-        // Initialisierung der Services (DatabaseService, ERPService, EmailService)
-        DatabaseService databaseService = new DatabaseServiceImp();
-        ERPService erpService = new ERPServiceImp();
-        EmailService emailService = new EmailServiceImp();
-
-        OrderProcess orderProcess = new OrderProcess(databaseService, erpService, emailService);
-        Order order = new Order();
-        order.setCustomerEmail("customer@example.com");
-        // Annahme: Gesamtwert der Bestellung beträgt 120.000 Euro
-        order.setTotalValue(120000);
-        List<OrderItem> orderItems = new ArrayList<>();
-        order.setOrderItems(orderItems);
-        OrderItem orderItem = new OrderItem();
-        orderItem.setPrice(100);
-        orderItem.setQuantity(50);
-        orderItems.add(orderItem);
-
-        orderProcess.placeOrder(order)
-                .onItem().transformToUni(orderProcess::captureOrder)
-                .onItem().transformToUni(orderProcess::createInvoice)
-                .onItem().transformToUni(orderProcess::createDeliveryNote)
-                .onItem().transformToMulti(orderProcess::prepareShipment)
-                .onItem().transformToUni(orderProcess::sendShipmentNotification)
-                .onItem().transformToUni(orderProcess::dispatchShipment)
-                .onItem().transformToUni(orderProcess::confirmReceipt)
-                .onItem().transformToUni(orderProcess::recordPayment)
-                .subscribe().with(
-                        payment -> System.out.println("Zahlung erfasst: " + payment),
-                        failure -> System.err.println("Fehler im Bestellprozess: " + failure)
-                );
+    private Uni<Void> sendShipmentNotification(Shipment shipment) {
+        return emailService.sendEmail(
+                        shipment.getCustomerEmail(),
+                        "Ihre Lieferung ist unterwegs!",
+                        "Ihr Paket mit der ID " + shipment.getShipmentId() + " wurde versandt.")
+                .onItem().invoke(() -> System.out.println("Versandbenachrichtigung gesendet an: " + shipment.getCustomerEmail()));
     }
 }
-

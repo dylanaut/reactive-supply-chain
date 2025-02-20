@@ -1,12 +1,18 @@
 package group.msg.gbi.supplychain.entities;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntity;
+import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 
+import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 
-public class Payment extends PanacheEntity {
+@Entity
+@Table(name = "payments")
+public class Payment extends PanacheEntityBase {
     @Id
     private String paymentId;
+    @OneToOne
     private ReceiptConfirmation receiptConfirmation;
 
     // Konstruktor
@@ -14,6 +20,12 @@ public class Payment extends PanacheEntity {
         this.receiptConfirmation = receiptConfirmation;
         this.paymentId = "PAY-" + System.currentTimeMillis();
     }
+
+
+    public Payment() {
+        // no args
+    }
+
 
     // Getter und Setter
     public String getPaymentId() {

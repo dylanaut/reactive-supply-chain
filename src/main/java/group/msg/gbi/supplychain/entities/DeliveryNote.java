@@ -1,14 +1,25 @@
-package group.msg.gbi.supplychain.dtos;
+package group.msg.gbi.supplychain.entities;
 
-import group.msg.gbi.supplychain.entities.Invoice;
-import group.msg.gbi.supplychain.entities.OrderItem;
+import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 
 import java.util.List;
 
-public class DeliveryNote {
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "delivery_notes")
+public class DeliveryNote extends PanacheEntityBase {
+    @Id
     private String deliveryNoteId;
+
+    @OneToOne
     private Invoice invoice;
 
+    @OneToMany
     private List<OrderItem> orderItems;
 
 
@@ -18,18 +29,27 @@ public class DeliveryNote {
         this.deliveryNoteId = "DN-" + System.currentTimeMillis(); // Beispiel für eine einfache ID-Generierung
     }
 
+
+    public DeliveryNote() {
+        // do nothing
+    }
+
+
     // Getter und Setter
     public String getDeliveryNoteId() {
         return deliveryNoteId;
     }
 
+
     public void setDeliveryNoteId(String deliveryNoteId) {
         this.deliveryNoteId = deliveryNoteId;
     }
 
+
     public Invoice getInvoice() {
         return invoice;
     }
+
 
     public void setInvoice(Invoice invoice) {
         this.invoice = invoice;

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                                       http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ChangeSet für die Tabelle "orders" -->
+    <changeSet id="1-create-orders-table" author="developer">
+        <createTable tableName="orders">
+            <column name="order_id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="customer_email" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total_value" type="NUMERIC(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="state" type="VARCHAR(50)" defaultValue="'CREATED'"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="2-create-orderitems-table" author="developer">
+        <createTable tableName="orderitems">
+            <column name="orderitem_id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="order_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="product_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="product_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantityShipped" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="price" type="NUMERIC(10,2)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!-- ChangeSet für die Tabelle "invoices" -->
+    <changeSet id="3-create-invoices-table" author="developer">
+        <createTable tableName="invoices">
+            <column name="invoice_id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="order_id" type="VARCHAR(255)">
+                <constraints nullable="false" foreignKeyName="fk_invoices_orders"
+                             references="orders(order_id)"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!-- ChangeSet für die Tabelle "delivery_notes" -->
+    <changeSet id="4-create-delivery-notes-table" author="developer">
+        <createTable tableName="delivery_notes">
+            <column name="delivery_note_id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="invoice_id" type="VARCHAR(255)">
+                <constraints nullable="false" foreignKeyName="fk_delivery_notes_invoices"
+                             references="invoices(invoice_id)"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!-- ChangeSet für die Tabelle "shipments" -->
+    <changeSet id="5-create-shipments-table" author="developer">
+        <createTable tableName="shipments">
+            <column name="shipment_id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="delivery_note_id" type="VARCHAR(255)">
+                <constraints nullable="false" foreignKeyName="fk_shipments_delivery_notes"
+                             references="delivery_notes(delivery_note_id)"/>
+            </column>
+            <column name="order_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>
